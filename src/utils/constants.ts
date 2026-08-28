@@ -50,18 +50,20 @@ export function tokenByAddress(index: number, address: string): TokenInfo | unde
 // The STRK20 privacy pool lives on Mainnet (0) and Sepolia (2); index 1 is a
 // spare public testnet endpoint. NEXT_PUBLIC_PROVIDER_URL is your Alchemy key.
 
+function alchemyUrl(network: "mainnet" | "sepolia"): string {
+  const v = process.env.NEXT_PUBLIC_PROVIDER_URL ?? "";
+  if (v.startsWith("http")) return v;
+  const base =
+    network === "mainnet"
+      ? "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_10/"
+      : "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/";
+  return base + v;
+}
+
 export const myFrontendProviders: ProviderInterface[] = [
-  new RpcProvider({
-    nodeUrl:
-      "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_10/" +
-      process.env.NEXT_PUBLIC_PROVIDER_URL,
-  }),
+  new RpcProvider({ nodeUrl: alchemyUrl("mainnet") }),
   new RpcProvider({ nodeUrl: "https://starknet-testnet.public.blastapi.io/rpc/v0_7" }),
-  new RpcProvider({
-    nodeUrl:
-      "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/" +
-      process.env.NEXT_PUBLIC_PROVIDER_URL,
-  }),
+  new RpcProvider({ nodeUrl: alchemyUrl("sepolia") }),
 ];
 
 // ─── OTC settlement helper ───────────────────────────────────────────────────
