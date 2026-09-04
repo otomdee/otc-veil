@@ -293,6 +293,11 @@ export default function OtcDesk() {
       txH = r.transaction_hash;
     } catch (error: any) {
       const raw = error?.message ?? error?.toString?.() ?? String(error);
+      // ── CRITICAL: log the actual rejection reason ──────────────────────────
+      console.error("[otc-veil] strk20InvokeTransaction rejected.");
+      console.error("[otc-veil] Error object:", error);
+      console.error("[otc-veil] Error message (raw):", raw);
+      // ──────────────────────────────────────────────────────────────────────
       const hint = /INVALID_REQUEST_PAYLOAD/i.test(raw)
         ? "\n\nHint: the wallet rejected the request before proving - most often there is no shielded balance to spend. Shield (deposit) the token into the pool first, wait a few blocks, then retry."
         : "";
@@ -307,11 +312,16 @@ export default function OtcDesk() {
       try {
         const prep = (myWalletAccount as any)?.strk20PrepareInvoke;
         if (typeof prep === "function") {
+          console.log("[otc-veil] Attempting dry-run via strk20PrepareInvoke...");
           const sim = await prep.call(myWalletAccount, actions, true);
+          console.log("[otc-veil] Dry-run result:", sim);
           detail = `\n\nDry-run result: ${JSON.stringify(sim)?.slice(0, 900)}`;
+        } else {
+          console.warn("[otc-veil] strk20PrepareInvoke not available on WalletAccount");
         }
       } catch (simError: any) {
         const msg = simError?.message ?? String(simError);
+        console.error("[otc-veil] Dry-run error:", simError);
         if (!/user|reject|cancel|abort/i.test(msg)) detail = `\n\nDry-run error: ${msg.slice(0, 900)}`;
       }
       setResult(errorResult(raw + hint + detail));
@@ -400,8 +410,12 @@ export default function OtcDesk() {
   // ── Create order (maker leg A) ──
   async function handleCreate() {
     setResultCreate(null);
+    console.group("[otc-veil] handleCreate");
+
     if (!tokens.length || sellIdx >= tokens.length || buyIdx >= tokens.length) {
+      console.error("[otc-veil] No tokens configured for network index", myFrontendProviderIndex);
       setResultCreate(errorResult("Configure tokens for this network first."));
+      console.groupEnd();
       return;
     }
     const sellTok = tokens[sellIdx];
@@ -409,39 +423,75 @@ export default function OtcDesk() {
     const sellWei = parseAmount(sellAmt, sellTok.decimals);
     const buyWei = parseAmount(buyAmt, buyTok.decimals);
     const hours = Number(expiryHours);
+
+    console.log("[otc-veil] State snapshot:", {
+      networkName,
+      myFrontendProviderIndex,
+      hasHelper,
+      helperHex,
+      connectedAddress,
+      sellTok: sellTok.symbol,
+      buyTok: buyTok.symbol,
+      sellAmt,
+      buyAmt,
+      sellWei: sellWei?.toString(),
+      buyWei: buyWei?.toString(),
+      hours,
+    });
+
     if (!hasHelper) {
+      console.error("[otc-veil] Helper not deployed on network", networkName);
       setResultCreate(errorResult(`OTC helper not deployed on ${networkName}.`));
+      console.groupEnd();
       return;
     }
     if (!connectedAddress) {
+      console.error("[otc-veil] No connected address");
       setResultCreate(errorResult("Connect a wallet first."));
+      console.groupEnd();
       return;
     }
     if (!sellWei || sellWei <= 0n || !buyWei || buyWei <= 0n) {
+      console.error("[otc-veil] Invalid amounts:", { sellWei: String(sellWei), buyWei: String(buyWei) });
       setResultCreate(errorResult("Enter valid amounts."));
+      console.groupEnd();
       return;
     }
     if (!Number.isFinite(hours) || hours <= 0) {
       setResultCreate(errorResult("Expiry must be a positive number of hours."));
+      console.groupEnd();
       return;
     }
     if (sellIdx === buyIdx) {
       setResultCreate(errorResult("Pick two different tokens."));
+      console.groupEnd();
       return;
     }
 
     setCreating(true);
     try {
       const secret = generateSecret();
+      console.log("[otc-veil] Generated secret:", secret);
+
       // Derive the commitment through the contract so frontend math can never
       // drift from the Poseidon implementation onchain.
-      const res = await provider().callContract({
-        contractAddress: helperHex,
-        entrypoint: "compute_order_id",
-        calldata: [secret],
-      });
+      console.log("[otc-veil] Calling compute_order_id on helper:", helperHex);
+      let res: string[];
+      try {
+        res = await provider().callContract({
+          contractAddress: helperHex,
+          entrypoint: "compute_order_id",
+          calldata: [secret],
+        });
+        console.log("[otc-veil] compute_order_id raw response:", res);
+      } catch (callErr: any) {
+        console.error("[otc-veil] compute_order_id call failed:", callErr);
+        throw callErr;
+      }
+
       const orderId = num.toHex(num.toBigInt(res[0]));
       const expiryTs = Math.floor(Date.now() / 1000) + Math.floor(hours * 3600);
+      console.log("[otc-veil] orderId:", orderId, "expiryTs:", expiryTs);
 
       const order: StoredOrder = {
         orderId,
@@ -455,6 +505,15 @@ export default function OtcDesk() {
         createdAt: Date.now(),
       };
 
+      const cd = fillCalldata({
+        orderId,
+        sellToken: sellTok.address,
+        sellAmountWei: sellWei,
+        buyToken: buyTok.address,
+        buyAmountWei: buyWei,
+        expiryTs,
+      });
+
       const actions: WALLET_API.STRK20_ACTION[] = [
         {
           type: "withdraw",
@@ -465,16 +524,12 @@ export default function OtcDesk() {
         {
           type: "invoke",
           contract: helperHex,
-          calldata: fillCalldata({
-            orderId,
-            sellToken: sellTok.address,
-            sellAmountWei: sellWei,
-            buyToken: buyTok.address,
-            buyAmountWei: buyWei,
-            expiryTs,
-          }),
+          calldata: cd,
         },
       ];
+
+      console.log("[otc-veil] fillCalldata:", cd);
+      console.log("[otc-veil] Submitting actions:", JSON.stringify(actions, null, 2));
 
       const txH = await submit(actions, setResultCreate, `Order ${shortHex(orderId)}`);
       if (txH) {
@@ -497,9 +552,11 @@ export default function OtcDesk() {
         });
       }
     } catch (error: any) {
+      console.error("[otc-veil] handleCreate failed:", error);
       setResultCreate(errorResult(error?.message ?? String(error)));
     } finally {
       setCreating(false);
+      console.groupEnd();
     }
   }
 

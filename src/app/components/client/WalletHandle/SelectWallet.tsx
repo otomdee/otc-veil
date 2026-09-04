@@ -66,14 +66,26 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
     return !id.includes("metamask") && !id.includes("braavos");
   });
 
-  // Unchanged connection flow: takes the wallet-standard wallet and populates
+  // Connection flow: takes the wallet-standard wallet and populates
   // the zustand store with a WalletAccountV6 + account/chain/permissions.
+  // IMPORTANT: chain ID is fetched FIRST so WalletAccountV6 is always
+  // created with the provider that matches the wallet's actual network.
   async function handleSelectedWallet(selectedWallet: WalletWithStarknetFeatures) {
     setMyWallet(selectedWallet); // zustand
     console.log("Trying to connect wallet=", selectedWallet);
-    const myWA = await WalletAccountV6.connect(myFrontendProviders[2], selectedWallet);
+
+    // Fetch chain first so we can pick the correct RPC provider.
+    const chainId = (await walletV6.requestChainId(selectedWallet)) as string;
+    const providerIndex = chainId === SNconstants.StarknetChainId.SN_MAIN ? 0 : 2;
+    setChain(chainId);
+    setCurrentFrontendProviderIndex(providerIndex);
+    console.log("Wallet chain:", chainId, "→ provider index:", providerIndex);
+
+    // Create WalletAccountV6 with the provider that matches the wallet's network.
+    const myWA = await WalletAccountV6.connect(myFrontendProviders[providerIndex], selectedWallet);
     setMyWalletAccount(myWA);
     console.log("WalletAccount created=", myWA);
+
     const result = await walletV6.requestAccounts(selectedWallet);
     if (typeof (result) == "string") {
       console.log("This Wallet is not compatible.");
@@ -92,10 +104,6 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
       } catch {
         /* persistence unavailable - session-only connection */
       }
-      const chainId = (await walletV6.requestChainId(selectedWallet)) as string;
-      setChain(chainId);
-      setCurrentFrontendProviderIndex(chainId === SNconstants.StarknetChainId.SN_MAIN ? 0 : 2);
-      console.log("change Provider index to :", myFrontendProviderIndex);
     }
     setWalletApi(await walletV6.supportedSpecs(selectedWallet));
   }

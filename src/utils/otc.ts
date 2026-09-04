@@ -98,9 +98,9 @@ export function fillCalldata(p: {
     num.toHex(num.toBigInt(p.buyToken)),
     num.toHex(p.buyAmountWei),
     num.toHex(p.expiryTs),
-    "0",
-    "0",
-    "0",
+    "0x0", // note_id_buyer  — unused in FILL; must be hex felt, not bare "0"
+    "0x0", // note_id_seller — unused in FILL
+    "0x0", // secret         — unused in FILL
   ];
 }
 
