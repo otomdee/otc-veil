@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="780" viewBox="0 0 1200 780" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0f1e"/>
+      <stop offset="1" stop-color="#131a33"/>
+    </linearGradient>
+    <linearGradient id="poolBand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1c2b5a"/>
+      <stop offset="1" stop-color="#2b3f7d"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#8ea2ff"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#5eead4"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="780" rx="24" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1198" height="778" rx="23" fill="none" stroke="#2a3560" stroke-width="2"/>
+
+  <!-- Title -->
+  <text x="60" y="62" fill="#ffffff" font-size="34" font-weight="800">OTC Veil — private OTC settlement in 3 steps</text>
+  <text x="60" y="92" fill="#9aa7d0" font-size="16">Large trades through the STRK20 privacy pool. No desk holds funds. No observer links the two sides.</text>
+
+  <!-- Pool band -->
+  <rect x="60" y="116" width="1080" height="64" rx="14" fill="url(#poolBand)" stroke="#4a5fa5" stroke-width="1.5"/>
+  <text x="84" y="143" fill="#cdd7ff" font-size="15" font-weight="700">STRK20 PRIVACY POOL — the pool is the on-chain caller</text>
+  <text x="84" y="165" fill="#aebbe8" font-size="13.5">Maker and taker transact with the pool. Their addresses never appear in the settlement path.</text>
+  <circle cx="1096" cy="148" r="14" fill="none" stroke="#8ea2ff" stroke-width="2"/>
+  <text x="1096" y="153" fill="#8ea2ff" font-size="15" font-weight="800" text-anchor="middle">?</text>
+
+  <!-- Step cards -->
+  <g>
+    <!-- Card 1 -->
+    <rect x="60" y="204" width="340" height="360" rx="16" fill="#141b36" stroke="#2e3c6e" stroke-width="1.5"/>
+    <rect x="60" y="204" width="340" height="56" rx="16" fill="#1b2a5e"/>
+    <rect x="60" y="230" width="340" height="30" fill="#1b2a5e"/>
+    <circle cx="92" cy="232" r="15" fill="#8ea2ff"/>
+    <text x="92" y="238" fill="#0b0f1e" font-size="16" font-weight="800" text-anchor="middle">1</text>
+    <text x="116" y="238" fill="#ffffff" font-size="17" font-weight="800">FILL · Maker lists</text>
+    <text x="84" y="292" fill="#5eead4" font-size="13" font-weight="700">MAKER (seller) — off-chain terms agreed</text>
+    <text x="84" y="318" fill="#dbe3ff" font-size="13.5">Shields sell tokens into</text>
+    <text x="84" y="338" fill="#dbe3ff" font-size="13.5">the helper contract.</text>
+    <text x="84" y="368" fill="#dbe3ff" font-size="13.5">Order stored under a secret</text>
+    <text x="84" y="388" fill="#dbe3ff" font-size="13.5">commitment — only the</text>
+    <text x="84" y="408" fill="#dbe3ff" font-size="13.5">maker knows the secret.</text>
+    <rect x="84" y="428" width="292" height="60" rx="10" fill="#0e1430" stroke="#2e3c6e"/>
+    <text x="98" y="451" fill="#8ea2ff" font-size="12.5" font-family="monospace">shield(SELL) → helper</text>
+    <text x="98" y="471" fill="#8ea2ff" font-size="12.5" font-family="monospace">invoke FILL(order_id)</text>
+    <text x="84" y="516" fill="#7f8cb3" font-size="12.5">Secret never leaves the browser.</text>
+    <text x="84" y="536" fill="#7f8cb3" font-size="12.5">Emits OrderCreated event.</text>
+  </g>
+
+  <g>
+    <!-- Card 2 -->
+    <rect x="430" y="204" width="340" height="360" rx="16" fill="#141b36" stroke="#2e3c6e" stroke-width="1.5"/>
+    <rect x="430" y="204" width="340" height="56" rx="16" fill="#1b2a5e"/>
+    <rect x="430" y="230" width="340" height="30" fill="#1b2a5e"/>
+    <circle cx="462" cy="232" r="15" fill="#5eead4"/>
+    <text x="462" y="238" fill="#0b0f1e" font-size="16" font-weight="800" text-anchor="middle">2</text>
+    <text x="486" y="238" fill="#ffffff" font-size="17" font-weight="800">SETTLE · Taker fills</text>
+    <text x="454" y="292" fill="#5eead4" font-size="13" font-weight="700">TAKER (buyer) — atomic swap</text>
+    <text x="454" y="318" fill="#dbe3ff" font-size="13.5">Shields buy tokens in. Sold</text>
+    <text x="454" y="338" fill="#dbe3ff" font-size="13.5">tokens land as a private</text>
+    <text x="454" y="358" fill="#dbe3ff" font-size="13.5">note to the taker — same</text>
+    <text x="454" y="378" fill="#dbe3ff" font-size="13.5">transaction, no custodian.</text>
+    <rect x="454" y="398" width="292" height="60" rx="10" fill="#0e1430" stroke="#2e3c6e"/>
+    <text x="468" y="421" fill="#8ea2ff" font-size="12.5" font-family="monospace">shield(BUY) → helper</text>
+    <text x="468" y="441" fill="#8ea2ff" font-size="12.5" font-family="monospace">invoke SETTLE → note to taker</text>
+    <text x="454" y="486" fill="#7f8cb3" font-size="12.5">Contract enforces exact terms</text>
+    <text x="454" y="506" fill="#7f8cb3" font-size="12.5">+ expiry. 10 bps fee to treasury.</text>
+    <text x="454" y="536" fill="#7f8cb3" font-size="12.5">Emits Settled event.</text>
+  </g>
+
+  <g>
+    <!-- Card 3 -->
+    <rect x="800" y="204" width="340" height="360" rx="16" fill="#141b36" stroke="#2e3c6e" stroke-width="1.5"/>
+    <rect x="800" y="204" width="340" height="56" rx="16" fill="#1b2a5e"/>
+    <rect x="800" y="230" width="340" height="30" fill="#1b2a5e"/>
+    <circle cx="832" cy="232" r="15" fill="#c4b5fd"/>
+    <text x="832" y="238" fill="#0b0f1e" font-size="16" font-weight="800" text-anchor="middle">3</text>
+    <text x="856" y="238" fill="#ffffff" font-size="17" font-weight="800">CLAIM · Maker exits</text>
+    <text x="824" y="292" fill="#5eead4" font-size="13" font-weight="700">MAKER reveals the secret</text>
+    <text x="824" y="318" fill="#dbe3ff" font-size="13.5">Net proceeds are credited</text>
+    <text x="824" y="338" fill="#dbe3ff" font-size="13.5">as a private note — only</text>
+    <text x="824" y="358" fill="#dbe3ff" font-size="13.5">the secret unlocks them.</text>
+    <rect x="824" y="378" width="292" height="60" rx="10" fill="#0e1430" stroke="#2e3c6e"/>
+    <text x="838" y="401" fill="#8ea2ff" font-size="12.5" font-family="monospace">invoke CLAIM(secret)</text>
+    <text x="838" y="421" fill="#8ea2ff" font-size="12.5" font-family="monospace">→ private note to maker</text>
+    <text x="824" y="466" fill="#7f8cb3" font-size="12.5">Expired + unfilled? Same call</text>
+    <text x="824" y="486" fill="#7f8cb3" font-size="12.5">refunds the sell tokens.</text>
+    <text x="824" y="516" fill="#7f8cb3" font-size="12.5">Emits Claimed event.</text>
+  </g>
+
+  <!-- Arrows between cards -->
+  <line x1="400" y1="384" x2="428" y2="384" stroke="#8ea2ff" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="770" y1="384" x2="798" y2="384" stroke="#8ea2ff" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <!-- Hidden vs visible -->
+  <rect x="60" y="588" width="1080" height="112" rx="14" fill="#0e1430" stroke="#2e3c6e" stroke-width="1.5"/>
+  <text x="84" y="618" fill="#5eead4" font-size="13" font-weight="800">HIDDEN  ·  identities · who traded with whom · note contents (selective disclosure via viewing keys)</text>
+  <text x="84" y="644" fill="#f0abfc" font-size="13" font-weight="800">VISIBLE  ·  order terms (must be discoverable) · that a settlement happened · fee flows (public by design)</text>
+  <text x="84" y="676" fill="#7f8cb3" font-size="12.5">Exact-fill only · 10 bps on the buy leg · order secrets live in the maker's browser — losing them forfeits unclaimed proceeds.</text>
+
+  <text x="60" y="736" fill="#5b678f" font-size="12.5">OTC Veil · trustless private OTC settlement on Starknet · built on STRK20</text>
+  <text x="1140" y="736" fill="#5b678f" font-size="12.5" text-anchor="end">Maker → Taker → Maker</text>
+</svg>

@@ -138,6 +138,12 @@ export default function OtcDesk() {
   const [resultCreate, setResultCreate] = useState<ActionResult | null>(null);
   const [creating, setCreating] = useState(false);
 
+  // Shield (deposit) form - withdrawals spend shielded pool balance, so the
+  // maker must shield the sell token before the first order.
+  const [shieldAmt, setShieldAmt] = useState("");
+  const [resultShield, setResultShield] = useState<ActionResult | null>(null);
+  const [shielding, setShielding] = useState(false);
+
   // Order book
   const [bookOrders, setBookOrders] = useState<ChainOrder[]>([]);
   const [bookLoading, setBookLoading] = useState(false);
@@ -170,7 +176,11 @@ export default function OtcDesk() {
       const r = await myWalletAccount.strk20InvokeTransaction(actions);
       txH = r.transaction_hash;
     } catch (error: any) {
-      setResult(errorResult(error?.message ?? error?.toString?.() ?? String(error)));
+      const raw = error?.message ?? error?.toString?.() ?? String(error);
+      const hint = /INVALID_REQUEST_PAYLOAD/i.test(raw)
+        ? "\n\nHint: the wallet rejected the request before proving - most often there is no shielded balance to spend. Shield (deposit) the token into the pool first, wait a few blocks, then retry."
+        : "";
+      setResult(errorResult(raw + hint));
       return undefined;
     }
     setResult({
@@ -210,6 +220,35 @@ export default function OtcDesk() {
     },
     [helperHex, myFrontendProviderIndex]
   );
+
+  // ── Shield (deposit public funds into the pool) ──
+  async function handleShield() {
+    setResultShield(null);
+    if (!tokens.length || sellIdx >= tokens.length) {
+      setResultShield(errorResult("Configure tokens for this network first."));
+      return;
+    }
+    if (!connectedAddress) {
+      setResultShield(errorResult("Connect a wallet first."));
+      return;
+    }
+    const tok = tokens[sellIdx];
+    const wei = parseAmount(shieldAmt || sellAmt, tok.decimals);
+    if (!wei || wei <= 0n) {
+      setResultShield(errorResult("Enter an amount to shield (or fill the sell amount above)."));
+      return;
+    }
+    setShielding(true);
+    try {
+      await submit(
+        [{ type: "deposit", token: tok.address, amount: num.toHex(wei) }],
+        setResultShield,
+        `Shield ${formatAmount(wei, tok.decimals)} ${tok.symbol}`
+      );
+    } finally {
+      setShielding(false);
+    }
+  }
 
   // ── Create order (maker leg A) ──
   async function handleCreate() {
@@ -658,13 +697,32 @@ export default function OtcDesk() {
           </div>
 
           {isConnected ? (
-            <button
-              className={styles.btnCta}
-              disabled={!isStrk20Network || !hasHelper || creating}
-              onClick={handleCreate}
-            >
-              {creating ? "Working…" : "Shield & list order"}
-            </button>
+            <>
+              <div className={styles.inputBlock}>
+                <div className={styles.inputLabel}>Step 0 — shield sell tokens into the pool (once per token)</div>
+                <div className={styles.inputMain}>
+                  <AmountInput value={shieldAmt} onChange={setShieldAmt} />
+                  <button
+                    className={`${styles.btn} ${styles.btnGreen}`}
+                    disabled={!isStrk20Network || shielding}
+                    onClick={handleShield}
+                  >
+                    {shielding ? "Shielding…" : `Shield ${tokens[sellIdx]?.symbol ?? ""}`}
+                  </button>
+                </div>
+                <div className={styles.subLine}>
+                  <span>Listing spends shielded balance — shield first, wait a few blocks, then list. Empty uses the sell amount.</span>
+                </div>
+              </div>
+              {resultShield ? <ResultCard r={resultShield} /> : null}
+              <button
+                className={styles.btnCta}
+                disabled={!isStrk20Network || !hasHelper || creating}
+                onClick={handleCreate}
+              >
+                {creating ? "Working…" : "List order"}
+              </button>
+            </>
           ) : (
             <SelectWallet variant="ctaBig" />
           )}
