@@ -97,6 +97,122 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "balances", label: "Balances" },
 ];
 
+// ─── Module-scope presentational components ──────────────────────────────
+// Defined outside OtcDesk on purpose: components declared inside the parent
+// get a new identity on every keystroke, remounting inputs and stealing focus.
+
+function explorerTxUrlFor(index: number, h: string): string {
+  return index === 0
+    ? `https://voyager.online/tx/${h}`
+    : `https://sepolia.voyager.online/tx/${h}`;
+}
+
+function ResultCard({
+  r,
+  explorerTxUrl,
+}: {
+  r: ActionResult;
+  explorerTxUrl: (h: string) => string;
+}) {
+  return (
+    <div
+      className={`${styles.receipt} ${
+        r.status === "error"
+          ? styles.receiptError
+          : r.status === "pending"
+          ? styles.receiptPending
+          : styles.receiptOk
+      }`}
+    >
+      <div className={styles.receiptHead}>
+        <span className={styles.receiptIcon}>
+          {r.status === "ok" ? "✓" : r.status === "error" ? "!" : "⋯"}
+        </span>
+        <span>{r.title}</span>
+      </div>
+      {r.rows?.length ? (
+        <div className={styles.receiptRows}>
+          {r.rows.map((row, i) => (
+            <div key={i} className={styles.receiptRow}>
+              <span className={styles.receiptLabel}>{row.label}</span>
+              {row.hash ? (
+                <a
+                  className={styles.receiptLink}
+                  href={explorerTxUrl(row.hash)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {row.value} ↗
+                </a>
+              ) : (
+                <span className={styles.receiptValue}>{row.value}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {r.note ? <pre className={styles.receiptNote}>{r.note}</pre> : null}
+    </div>
+  );
+}
+
+function TokenSelect({
+  value,
+  onChange,
+  tokens,
+}: {
+  value: number;
+  onChange: (i: number) => void;
+  tokens: constants.TokenInfo[];
+}) {
+  return (
+    <select
+      style={{
+        background: "#16181d",
+        color: "#eaeaea",
+        border: "1px solid #2a2d34",
+        borderRadius: 8,
+        padding: "8px 10px",
+        fontSize: 14,
+      }}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+    >
+      {tokens.map((t, i) => (
+        <option key={t.address} value={i}>
+          {t.symbol}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function AmountInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <input
+      style={{
+        background: "#16181d",
+        color: "#eaeaea",
+        border: "1px solid #2a2d34",
+        borderRadius: 8,
+        padding: "8px 10px",
+        fontSize: 14,
+        width: "100%",
+      }}
+      placeholder="0.00"
+      inputMode="decimal"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
 export default function OtcDesk() {
   const myFrontendProviderIndex = useFrontendProvider((s) => s.currentFrontendProviderIndex);
   const myWalletAccount = useStoreWallet((s) => s.myWalletAccount);
@@ -180,7 +296,25 @@ export default function OtcDesk() {
       const hint = /INVALID_REQUEST_PAYLOAD/i.test(raw)
         ? "\n\nHint: the wallet rejected the request before proving - most often there is no shielded balance to spend. Shield (deposit) the token into the pool first, wait a few blocks, then retry."
         : "";
-      setResult(errorResult(raw + hint));
+      // Ask the wallet why: dry-run the same batch and surface its verdict.
+      // Also log the exact payload so it can be inspected in DevTools.
+      let detail = "";
+      try {
+        console.log("[otc-veil] rejected strk20 actions:", JSON.stringify(actions));
+      } catch {
+        /* ignore */
+      }
+      try {
+        const prep = (myWalletAccount as any)?.strk20PrepareInvoke;
+        if (typeof prep === "function") {
+          const sim = await prep.call(myWalletAccount, actions, true);
+          detail = `\n\nDry-run result: ${JSON.stringify(sim)?.slice(0, 900)}`;
+        }
+      } catch (simError: any) {
+        const msg = simError?.message ?? String(simError);
+        if (!/user|reject|cancel|abort/i.test(msg)) detail = `\n\nDry-run error: ${msg.slice(0, 900)}`;
+      }
+      setResult(errorResult(raw + hint + detail));
       return undefined;
     }
     setResult({
@@ -188,6 +322,17 @@ export default function OtcDesk() {
       title: "Waiting for confirmation…",
       rows: [{ label: "Transaction", value: shortHex(txH), hash: txH }],
     });
+    // Tick the pending card so long STRK20 proving (~30-60s) visibly progresses.
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      const s = Math.round((Date.now() - t0) / 1000);
+      setResult({
+        status: "pending",
+        title: "Waiting for confirmation…",
+        rows: [{ label: "Transaction", value: shortHex(txH), hash: txH }],
+        note: `${s}s elapsed - STRK20 transactions generate a STARK proof first, typically 30-60s.`,
+      });
+    }, 5000);
     try {
       const txR = await provider().waitForTransaction(txH, { retries: 400, retryInterval: 3000 });
       setResult(receiptToResult(txR, txH, label));
@@ -198,6 +343,8 @@ export default function OtcDesk() {
         rows: [{ label: "Transaction", value: shortHex(txH), hash: txH }],
         note: error?.message ?? String(error),
       });
+    } finally {
+      clearInterval(timer);
     }
     return txH;
   }
@@ -534,96 +681,7 @@ export default function OtcDesk() {
   }
 
   // ── Render helpers ──
-  const explorerTxUrl = (h: string) =>
-    myFrontendProviderIndex === 0
-      ? `https://voyager.online/tx/${h}`
-      : `https://sepolia.voyager.online/tx/${h}`;
-
-  const ResultCard = ({ r }: { r: ActionResult }) => (
-    <div
-      className={`${styles.receipt} ${
-        r.status === "error"
-          ? styles.receiptError
-          : r.status === "pending"
-          ? styles.receiptPending
-          : styles.receiptOk
-      }`}
-    >
-      <div className={styles.receiptHead}>
-        <span className={styles.receiptIcon}>
-          {r.status === "ok" ? "✓" : r.status === "error" ? "!" : "⋯"}
-        </span>
-        <span>{r.title}</span>
-      </div>
-      {r.rows?.length ? (
-        <div className={styles.receiptRows}>
-          {r.rows.map((row, i) => (
-            <div key={i} className={styles.receiptRow}>
-              <span className={styles.receiptLabel}>{row.label}</span>
-              {row.hash ? (
-                <a
-                  className={styles.receiptLink}
-                  href={explorerTxUrl(row.hash)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {row.value} ↗
-                </a>
-              ) : (
-                <span className={styles.receiptValue}>{row.value}</span>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {r.note ? <pre className={styles.receiptNote}>{r.note}</pre> : null}
-    </div>
-  );
-
-  const TokenSelect = ({
-    value,
-    onChange,
-  }: {
-    value: number;
-    onChange: (i: number) => void;
-  }) => (
-    <select
-      style={{
-        background: "#16181d",
-        color: "#eaeaea",
-        border: "1px solid #2a2d34",
-        borderRadius: 8,
-        padding: "8px 10px",
-        fontSize: 14,
-      }}
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
-    >
-      {tokens.map((t, i) => (
-        <option key={t.address} value={i}>
-          {t.symbol}
-        </option>
-      ))}
-    </select>
-  );
-
-  const AmountInput = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-    <input
-      style={{
-        background: "#16181d",
-        color: "#eaeaea",
-        border: "1px solid #2a2d34",
-        borderRadius: 8,
-        padding: "8px 10px",
-        fontSize: 14,
-        width: "100%",
-      }}
-      placeholder="0.00"
-      inputMode="decimal"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  );
+  const explorerTxUrl = (h: string) => explorerTxUrlFor(myFrontendProviderIndex, h);
 
   const now = Math.floor(Date.now() / 1000);
 
@@ -664,18 +722,40 @@ export default function OtcDesk() {
       {/* ── CREATE ── */}
       {tab === "create" && (
         <>
+          {isConnected ? (
+            <>
+              <div className={styles.inputBlock}>
+                <div className={styles.inputLabel}>Step 1 — shield sell tokens into the pool (once per token)</div>
+                <div className={styles.inputMain}>
+                  <AmountInput value={shieldAmt} onChange={setShieldAmt} />
+                  <button
+                    className={`${styles.btn} ${styles.btnGreen}`}
+                    disabled={!isStrk20Network || shielding}
+                    onClick={handleShield}
+                  >
+                    {shielding ? "Shielding…" : `Shield ${tokens[sellIdx]?.symbol ?? ""}`}
+                  </button>
+                </div>
+                <div className={styles.subLine}>
+                  <span>Listing spends shielded balance — shield first, wait a few blocks, then list. Empty uses the sell amount.</span>
+                </div>
+              </div>
+              {resultShield ? <ResultCard r={resultShield} explorerTxUrl={explorerTxUrl} /> : null}
+            </>
+          ) : null}
+
           <div className={styles.inputBlock}>
-            <div className={styles.inputLabel}>You privately sell</div>
+            <div className={styles.inputLabel}>Step 2 — you privately sell</div>
             <div className={styles.inputMain}>
               <AmountInput value={sellAmt} onChange={setSellAmt} />
-              <TokenSelect value={sellIdx} onChange={setSellIdx} />
+              <TokenSelect value={sellIdx} onChange={setSellIdx} tokens={tokens} />
             </div>
             <div className={styles.inputLabel} style={{ marginTop: 12 }}>
               You privately buy
             </div>
             <div className={styles.inputMain}>
               <AmountInput value={buyAmt} onChange={setBuyAmt} />
-              <TokenSelect value={buyIdx} onChange={setBuyIdx} />
+              <TokenSelect value={buyIdx} onChange={setBuyIdx} tokens={tokens} />
             </div>
             <div className={styles.subLine}>
               <span>Expires after (hours)</span>
@@ -697,37 +777,18 @@ export default function OtcDesk() {
           </div>
 
           {isConnected ? (
-            <>
-              <div className={styles.inputBlock}>
-                <div className={styles.inputLabel}>Step 0 — shield sell tokens into the pool (once per token)</div>
-                <div className={styles.inputMain}>
-                  <AmountInput value={shieldAmt} onChange={setShieldAmt} />
-                  <button
-                    className={`${styles.btn} ${styles.btnGreen}`}
-                    disabled={!isStrk20Network || shielding}
-                    onClick={handleShield}
-                  >
-                    {shielding ? "Shielding…" : `Shield ${tokens[sellIdx]?.symbol ?? ""}`}
-                  </button>
-                </div>
-                <div className={styles.subLine}>
-                  <span>Listing spends shielded balance — shield first, wait a few blocks, then list. Empty uses the sell amount.</span>
-                </div>
-              </div>
-              {resultShield ? <ResultCard r={resultShield} /> : null}
-              <button
-                className={styles.btnCta}
-                disabled={!isStrk20Network || !hasHelper || creating}
-                onClick={handleCreate}
-              >
-                {creating ? "Working…" : "List order"}
-              </button>
-            </>
+            <button
+              className={styles.btnCta}
+              disabled={!isStrk20Network || !hasHelper || creating}
+              onClick={handleCreate}
+            >
+              {creating ? "Working…" : "List order"}
+            </button>
           ) : (
             <SelectWallet variant="ctaBig" />
           )}
 
-          {resultCreate ? <ResultCard r={resultCreate} /> : null}
+          {resultCreate ? <ResultCard r={resultCreate} explorerTxUrl={explorerTxUrl} /> : null}
         </>
       )}
 
@@ -785,7 +846,7 @@ export default function OtcDesk() {
             </div>
           ))}
 
-          {resultFill ? <ResultCard r={resultFill} /> : null}
+          {resultFill ? <ResultCard r={resultFill} explorerTxUrl={explorerTxUrl} /> : null}
         </>
       )}
 
@@ -864,7 +925,7 @@ export default function OtcDesk() {
             );
           })}
 
-          {resultClaim ? <ResultCard r={resultClaim} /> : null}
+          {resultClaim ? <ResultCard r={resultClaim} explorerTxUrl={explorerTxUrl} /> : null}
 
           <div className={styles.warn} style={{ marginTop: 12 }}>
             Order secrets are stored only in this browser (localStorage). Clearing site data
@@ -887,7 +948,7 @@ export default function OtcDesk() {
           ) : (
             <SelectWallet variant="ctaBig" />
           )}
-          {resultBalances ? <ResultCard r={resultBalances} /> : null}
+          {resultBalances ? <ResultCard r={resultBalances} explorerTxUrl={explorerTxUrl} /> : null}
         </>
       )}
     </div>

@@ -2,7 +2,7 @@
 import styles from "../../../uni.module.css";
 import { useStoreWallet } from "../../Wallet/walletContext";
 import { useFrontendProvider } from "../provider/providerContext";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { walletV6, validateAndParseAddress, constants as SNconstants, WalletAccountV6 } from "starknet";
 import { WALLET_API } from "@starknet-io/types-js";
 import { myFrontendProviders } from "@/utils/constants";
@@ -10,6 +10,9 @@ import { createStore, type Store } from "@starknet-io/get-starknet-discovery";
 import type {
   WalletWithStarknetFeatures,
 } from '@starknet-io/get-starknet-wallet-standard/features';
+
+// Last connected wallet name - used for silent reconnect on page refresh.
+const LS_WALLET_KEY = "otc-veil/wallet/v1";
 
 
 // Normalize wallet identifiers so starknetkit's connector id / SWO name
@@ -84,6 +87,11 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
     const isConnectedWallet: boolean = await walletV6.getPermissions(selectedWallet).then((res: any) => (res as WALLET_API.Permission[]).includes(WALLET_API.Permission.ACCOUNTS));
     setConnected(isConnectedWallet); // zustand
     if (isConnectedWallet) {
+      try {
+        window.localStorage.setItem(LS_WALLET_KEY, selectedWallet.name);
+      } catch {
+        /* persistence unavailable - session-only connection */
+      }
       const chainId = (await walletV6.requestChainId(selectedWallet)) as string;
       setChain(chainId);
       setCurrentFrontendProviderIndex(chainId === SNconstants.StarknetChainId.SN_MAIN ? 0 : 2);
@@ -91,6 +99,49 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
     }
     setWalletApi(await walletV6.supportedSpecs(selectedWallet));
   }
+
+  // Silent reconnect on page refresh: if the user connected before and the
+  // wallet still grants this site ACCOUNTS permission, restore the session
+  // without opening the picker. Anything failing stays disconnected.
+  const reconnectTried = useRef(false);
+  useEffect(() => {
+    if (reconnectTried.current || isConnected || wallets.length === 0) return;
+    reconnectTried.current = true;
+    let name: string | null = null;
+    try {
+      name = window.localStorage.getItem(LS_WALLET_KEY);
+    } catch {
+      return;
+    }
+    if (!name) return;
+    const w =
+      wallets.find((x) => x.name === name) ??
+      wallets.find((x) => normalizeId(x.name) === normalizeId(name));
+    if (!w) return;
+    (async () => {
+      try {
+        const perms = await walletV6
+          .getPermissions(w)
+          .then((res: any) => res as WALLET_API.Permission[])
+          .catch(() => [] as WALLET_API.Permission[]);
+        if (!perms.includes(WALLET_API.Permission.ACCOUNTS)) return;
+        await handleSelectedWallet(w);
+      } catch {
+        /* stay disconnected - user can connect manually */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallets, isConnected]);
+
+  // Disconnect clears the remembered wallet so refresh stays logged out.
+  const disconnect = () => {
+    try {
+      window.localStorage.removeItem(LS_WALLET_KEY);
+    } catch {
+      /* ignore */
+    }
+    setConnected(false);
+  };
 
   // Open the wallet picker so the user can choose (Ready, Xverse, ...).
   const openPicker = () => {
@@ -171,7 +222,7 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
       return (
         <button
           className={styles.addrPill}
-          onClick={() => setConnected(false)}
+          onClick={disconnect}
           title="Disconnect"
         >
           <span className={styles.addrDot} />
